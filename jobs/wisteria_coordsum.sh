@@ -24,6 +24,7 @@ SEED_START="${SEED_START:-1}"
 SEED_END="${SEED_END:-1}"
 MAXPAR="${MAXPAR:-4}"            # 同時に走らせる run 数
 MODE="${MODE:-full}"             # test(20更新) | full(論文設定)
+RESULTS_ROOT="${RESULTS_ROOT:-results}"   # 結果の保存先(実験条件ごとに分けるため)
 
 if [ "${TASK}" = "all" ]; then TASKS="3x10-30 3x30-50 5x20-80 8x15-100"; else TASKS="${TASK}"; fi
 SEEDS="$(seq "${SEED_START}" "${SEED_END}" | tr '\n' ' ')"
@@ -68,7 +69,7 @@ run_one() {
       "${overrides[@]}" \
       system.total_timesteps=null \
       system.seed="${seed}" \
-      logger.base_exp_path="results/coordsum_${SYSTEM}_${task}_s${seed}" \
+      logger.base_exp_path="${RESULTS_ROOT}/coordsum_${SYSTEM}_${task}_s${seed}" \
       logger.loggers.json.enabled=True \
       >> "${log}" 2>&1; then
       rm -rf "${tmpd}"
