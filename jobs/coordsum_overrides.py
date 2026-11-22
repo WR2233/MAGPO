@@ -11,6 +11,9 @@
   - magpo / sable / mat は学習率が1つだけ(system.actor_lr)。CoordSum の行では
     その値が critic_lr 列に入っているため、actor_lr が空なら critic_lr を使う
   - mappo / happo は actor_lr と critic_lr の両方を設定する
+  - 論文 付録 Table 2 / Table 3 の既定値: GAE=0.9, value function coefficient=0.1 を全手法に適用する
+    (リポジトリの設定ファイルの既定値は 0.95 / 0.5 で、params.csv にもこの2項目は無い)。
+    環境変数 PAPER_DEFAULTS=0 で無効化できる(以前の実行との比較用)
 """
 import csv
 import os
@@ -48,6 +51,8 @@ def build(system, task):
         if r.get(col):
             out.append(f"{key}={r[col]}")
 
+    if os.environ.get("PAPER_DEFAULTS", "1") == "1":
+        out += ["system.gae_lambda=0.9", "system.vf_coef=0.1"]
     add("arch.num_envs", "num_envs")
     add("system.num_updates", "num_updates")
     add("arch.num_evaluation", "num_evaluation")
