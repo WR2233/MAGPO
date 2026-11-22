@@ -35,13 +35,17 @@ mkdir -p logs
 # 計算ノードは外部ネットワークに出られないことが多いので、
 # 依存は事前にログインノードで `uv sync --extra cuda12` しておくこと。
 # 必要ならここで module load (CUDA 等) を行う。例: module load cuda/12.x  (要確認)
-source .venv/bin/activate
+PY="$PWD/.venv/bin/python"
+if [ ! -x "${PY}" ]; then
+  echo "ERROR: ${PY} not found. Run 'uv sync --extra cuda12' in $PWD on the login node." >&2
+  exit 1
+fi
 
 # GPU メモリを JAX が全確保しないようにする(同一GPUで複数ジョブを走らせる場合に有効)
 export XLA_PYTHON_CLIENT_PREALLOCATE=false
 
 echo "== host: $(hostname)  mode: ${MODE}  seed: ${SEED}"
-python -c "import jax; print('jax devices:', jax.devices())"
+"${PY}" -c "import jax; print('jax devices:', jax.devices())"
 
 if [ "${MODE}" = "test" ]; then
   # 速度測定用: ACTOR の Steps per second を見て本番の所要時間を見積もる
@@ -52,7 +56,7 @@ else
   NUM_EVAL=122
 fi
 
-python mava/systems/gpo/anakin/rec_magpo.py \
+"${PY}" mava/systems/gpo/anakin/rec_magpo.py \
   env="${ENV}" env/scenario="${SCENARIO}" \
   arch.num_envs=64 \
   system.total_timesteps=null \
