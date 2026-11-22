@@ -6,10 +6,10 @@
 #   pjsub jobs/wisteria_magpo.sh                                  # 短いテスト(既定)
 #   pjsub -x MODE=full -x SEED=1 jobs/wisteria_magpo.sh           # 本番(論文設定)
 #
-#PJM -g <GROUP>                  # 課金グループ名 (例: gxxxxx)
-#PJM -L rscgrp=<RSCGRP>          # 例: share-short(テスト) / share(本番)など。要確認
+#PJM -g gg45                     # 課金グループ名
+#PJM -L rscgrp=share-debug       # テスト用。本番は share-short 等に変更(pjstat --rsc で確認)
 #PJM -L gpu=1                    # GPU 1枚。share系グループ向けの指定と記憶している。要確認
-#PJM -L elapse=00:30:00          # walltime。本番は実測の steps/s から決めて延ばす
+#PJM -L elapse=00:15:00          # walltime。本番は実測の steps/s から決めて延ばす
 #PJM -N magpo
 #PJM -j                          # 標準エラーを標準出力に統合
 #PJM -o logs/magpo_%j.out
