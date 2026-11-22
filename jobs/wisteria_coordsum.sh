@@ -50,31 +50,48 @@ run_one() {
   if [ "${MODE}" = "test" ]; then
     overrides+=("system.num_updates=20" "arch.num_evaluation=2")
   fi
-  "${PY}" "${script}" \
-    env=coordsum env/scenario="${task}" \
-    "${overrides[@]}" \
-    system.total_timesteps=null \
-    system.seed="${seed}" \
-    logger.base_exp_path="results/coordsum_${SYSTEM}_${task}_s${seed}" \
-    logger.loggers.json.enabled=True \
-    > "logs/coordsum_${SYSTEM}_${task}_s${seed}_${PJM_JOBID:-local}.out" 2>&1
+  # 手元(Mac)での動作確認用: 環境数を絞る
+  if [ -n "${NUM_ENVS:-}" ]; then
+    overrides+=("arch.num_envs=${NUM_ENVS}")
+  fi
+  # run ごとの専用 TMPDIR(同時JITコンパイル時の /tmp 競合による ptxas エラー対策)
+  local tmpd="$PWD/tmp/${PJM_JOBID:-local}_${SYSTEM}_${task}_s${seed}"
+  mkdir -p "${tmpd}"
+  export TMPDIR="${tmpd}"
+  local log="logs/coordsum_${SYSTEM}_${task}_s${seed}_${PJM_JOBID:-local}.out"
+  : > "${log}"
+  local attempt
+  for attempt in 1 2 3; do
+    echo "== attempt ${attempt}" >> "${log}"
+    if "${PY}" "${script}" \
+      env=coordsum env/scenario="${task}" \
+      "${overrides[@]}" \
+      system.total_timesteps=null \
+      system.seed="${seed}" \
+      logger.base_exp_path="results/coordsum_${SYSTEM}_${task}_s${seed}" \
+      logger.loggers.json.enabled=True \
+      >> "${log}" 2>&1; then
+      rm -rf "${tmpd}"
+      return 0
+    fi
+    echo "== attempt ${attempt} failed, retrying" >> "${log}"
+    sleep 10
+  done
+  return 1
 }
 
-fail=0
-running=0
+# 失敗した run は FAILDIR にファイルを作って記録する(wait -n を使わないので bash 3.2 でも動く)
+FAILDIR="$(mktemp -d "${PWD}/logs/.fail_XXXXXX")"
 for t in ${TASKS}; do
   for s in ${SEEDS}; do
-    ( run_one "${t}" "${s}" ) &
-    running=$((running + 1))
-    if [ "${running}" -ge "${MAXPAR}" ]; then
-      wait -n || fail=1
-      running=$((running - 1))
-    fi
+    while [ "$(jobs -r | wc -l)" -ge "${MAXPAR}" ]; do sleep 5; done
+    ( run_one "${t}" "${s}" || touch "${FAILDIR}/${t}_s${s}" ) &
+    sleep "${STAGGER:-20}"
   done
 done
-while [ "${running}" -gt 0 ]; do
-  wait -n || fail=1
-  running=$((running - 1))
-done
-echo "== done system=${SYSTEM} fail=${fail}"
-exit "${fail}"
+wait
+fail="$(ls "${FAILDIR}" | wc -l | tr -d ' ')"
+if [ "${fail}" -gt 0 ]; then echo "== FAILED runs: $(ls "${FAILDIR}" | tr '\n' ' ')"; fi
+rm -rf "${FAILDIR}"
+echo "== done system=${SYSTEM} failed_runs=${fail}"
+[ "${fail}" -eq 0 ]

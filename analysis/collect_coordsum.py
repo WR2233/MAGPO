@@ -47,10 +47,13 @@ def collect_paper(path):
 
 def collect_ours(root):
     pat = re.compile(r"coordsum_(?P<system>[a-z]+)_(?P<task>\d+x\d+-\d+)_s(?P<seed>\d+)")
+    # 同じ (system, task, seed) に複数の metrics.json がある場合(再試行など)は、最新(タイムスタンプ最大)だけ使う
+    latest = {}
     for p in sorted(glob.glob(os.path.join(root, "coordsum_*", "json", "**", "metrics.json"), recursive=True)):
         m = pat.search(p)
-        if not m:
-            continue
+        if m:
+            latest[(m["system"], m["task"], m["seed"])] = (p, m)
+    for p, m in latest.values():
         d = json.load(open(p))
         # {env: {task: {algo: {seed_N: {...}}}}} を辿り、seed 辞書を取り出す
         env = next(iter(d.values()))
