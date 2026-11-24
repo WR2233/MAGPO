@@ -45,7 +45,7 @@ def main():
     exp = list(csv.DictReader(open("analysis/data/ours_params.csv")))
     rows, issues = [], []
     for d, cond in COND.items():
-        for f in sorted(glob.glob(f"{root}/logs_{d}/coordsum_*_s1_*.out")):
+        for f in sorted(glob.glob(f"{root}/logs_{d}/coordsum_*_s*_*.out")):
             text = ANSI.sub("", open(f, errors="ignore").read())
             n_eval = text.count("MISC - Timestep")
             if n_eval < 122:

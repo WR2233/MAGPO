@@ -6,16 +6,19 @@ params.csv の CoordSum 行(= 実際に Hydra override として渡した値)に
   gae_lambda    : 実際に使った GAE λ(params.csv に無い列。条件で変える)
   vf_coef       : 実際に使った value 係数
   system_name   : 実行に使った手法名(旧版は magpoold。params.csv 上の元の手法名は params_system)
-使い方: python3 analysis/make_ours_params.py
+使い方: uv run --no-project --with numpy python analysis/make_ours_params.py
 """
 import csv
 import os
+import sys
 
 ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import common as C  # noqa: E402
 SRC = os.path.join(ROOT, "experiment_data", "params.csv")
 OUT = os.path.join(ROOT, "analysis", "data", "ours_params.csv")
 TASKS = ["3x10", "3x30", "5x20", "8x15"]
-# (condition, code, gae, vf, 手法リスト, 結果ディレクトリ)
+# (condition, code, gae, vf, 手法リスト)。seed は各条件の CSV(完了した run)にあるものを全部書く
 CONDS = [
     ("v1_codedefault", "current", 0.95, 0.5, ["magpo", "mappo", "happo", "sable", "mat"]),
     ("v2_paperdefault", "current", 0.9, 0.1, ["magpo", "mappo", "happo", "sable", "mat"]),
@@ -31,12 +34,14 @@ with open(OUT, "w", newline="") as f:
     w = csv.DictWriter(f, fieldnames=cols + extra)
     w.writeheader()
     for cond, code, gae, vf, systems in CONDS:
+        runs = C.load_condition(cond)  # 完了した run だけ
         for s in systems:
-            for t in TASKS:
-                r = next(x for x in rows if x["system_name"] == s and x["task"] == t)
-                o = dict(r)
-                o.update(condition=cond, code=code, gae_lambda=gae, vf_coef=vf, params_system=s, seed=1)
-                if code == "old":
-                    o["system_name"] = "magpoold"
-                w.writerow(o)
+            for t, tc in zip(C.TASKS, TASKS):
+                r = next(x for x in rows if x["system_name"] == s and x["task"] == tc)
+                for seed in sorted(k[2] for k in runs if k[0] == s and k[1] == t):
+                    o = dict(r)
+                    o.update(condition=cond, code=code, gae_lambda=gae, vf_coef=vf, params_system=s, seed=seed)
+                    if code == "old":
+                        o["system_name"] = "magpoold"
+                    w.writerow(o)
 print("wrote", OUT)

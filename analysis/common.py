@@ -13,7 +13,7 @@ from collections import defaultdict
 
 import numpy as np
 
-DATA = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
+DATA = os.environ.get("COORDSUM_DATA", os.path.join(os.path.dirname(os.path.abspath(__file__)), "data"))
 PAPER_CSV = os.path.join(DATA, "paper_coordsum.csv")
 TASKS = ["3x10-30", "3x30-50", "5x20-80", "8x15-100"]
 SYSTEMS = ["magpo", "mappo", "happo", "sable", "mat"]
@@ -92,3 +92,47 @@ def style_ax(ax, labelsize=8):
         ax.spines[sp].set_visible(False)
     ax.spines["bottom"].set_color(GRID)
     ax.tick_params(colors=INK2, labelsize=labelsize, length=0)
+
+
+# ---- 複数 seed の扱い ------------------------------------------------------------------------
+def stack(data, system, task):
+    """(system, task) の全 seed を積む -> (steps[T], returns[n_seeds, T], seeds) / 無ければ None。"""
+    ks = sorted(k for k in data if k[0] == system and k[1] == task)
+    if not ks:
+        return None
+    n = min(len(data[k][1]) for k in ks)
+    return data[ks[0]][0][:n], np.array([data[k][1][:n] for k in ks]), [k[2] for k in ks]
+
+
+def seed_metrics(data, system, task, kind):
+    """各 seed の指標(final / auc)の配列。無ければ None。"""
+    st = stack(data, system, task)
+    return None if st is None else np.array([metric(y, kind) for y in st[1]])
+
+
+def n_seeds(data):
+    """データに含まれる seed 数(手法・タスクごとの最小値)。"""
+    cnt = defaultdict(set)
+    for k in data:
+        cnt[(k[0], k[1])].add(k[2])
+    return min(len(v) for v in cnt.values()) if cnt else 0
+
+
+def z_score(ours, ref):
+    """論文(10 seed)の値 ref に対する、自分の値 ours(1 個以上)のずれ。
+    ours が 1 個: (ours - 論文平均) / 論文の seed 間 std。
+    ours が複数: Welch 型 (平均の差) / sqrt(論文var/n_論文 + 自分var/n_自分)。"""
+    ours, ref = np.asarray(ours, float), np.asarray(ref, float)
+    if len(ours) == 1:
+        return float((ours[0] - ref.mean()) / ref.std(ddof=1))
+    se = np.sqrt(ref.var(ddof=1) / len(ref) + ours.var(ddof=1) / len(ours))
+    return float((ours.mean() - ref.mean()) / se)
+
+
+def band(ax, steps, arr, color, lw=1.7, alpha=1.0, band_alpha=0.14):
+    """複数 seed なら 平均線 + ±std の帯、1 seed なら線だけ。"""
+    x = steps / 1e7
+    ax.plot(x, arr.mean(0), color=color, lw=lw, alpha=alpha)
+    if arr.shape[0] > 1:
+        sd = arr.std(0, ddof=1)
+        ax.fill_between(x, arr.mean(0) - sd, arr.mean(0) + sd, color=color, alpha=band_alpha * alpha, lw=0)
