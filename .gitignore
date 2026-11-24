@@ -6,3 +6,6 @@ results/
 logs/
 outputs/
 tmp/
+results_*/
+figures/
+analysis/diffs/

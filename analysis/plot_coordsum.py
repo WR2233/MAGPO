@@ -4,7 +4,7 @@
 
 使い方:
   uv run --no-project --with matplotlib --with numpy python analysis/plot_coordsum.py \
-      --paper analysis/data/paper_coordsum.csv --ours analysis/data/ours_coordsum.csv \
+      --paper analysis/data/paper_coordsum.csv --ours analysis/data/ours_v1_codedefault.csv \
       --norm maxmean --out figures/coordsum_fig_a.png
 
 --norm(タスクごとの正規化。定数は基準データ --norm-ref の分から計算し、ours / paper の両方へ同じ定数を適用する):
