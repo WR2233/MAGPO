@@ -4,7 +4,8 @@
   02_final_vs_paper.png   : 全手法(CTDS 含む)の最終スコア(final)を、タスクごとに論文と並べた棒グラフ
   03_curves_by_task.png   : 手法×タスクの学習曲線。論文(10 seed 平均±std の帯)に、自分の 2 条件(コード既定値=薄い線、論文既定値=濃い線)を重ねる。
                             MAGPO・他手法は現行コード。CTDS は旧版コードベースでコード既定値のみ(論文既定値の実行なし)
-  04_normalized_overview.png : 論文 Figure (a) 形式(4 タスク平均・タスクごとの最大値で正規化)。論文 | 自分(CTDS 含む)
+  04_normalized_overview.png : 論文 Figure 2(a) 形式(タスクごとの min-max 正規化 + 全タスクの IQM + 95% 層化ブートストラップ区間)。論文 | 自分(CTDS 含む)
+  07_normalized_by_method.png : 04 と同じ正規化 IQM を手法ごとの小さな図に分け、各図で論文(灰の破線)と自分(色の実線)を重ねる
   05_repro_curves.png     : 採用条件(MAGPO=旧版コード、他=現行コード、全手法コード既定値、CTDS=旧版コードベース)の学習曲線を論文と比較
   06_repro_final.png      : 同条件の最終スコア(棒=seed 平均、点=各 seed、上段=平均・n・論文との z)
 
@@ -255,24 +256,114 @@ def fig_repro_final(paper, out):
     fig.savefig(out, dpi=140, facecolor=C.SURF)
     print("saved", out)
 
-def fig_normalized(ours, set_name, out):
-    """論文 Figure (a) 形式。正規化は plot_coordsum.py と同じ関数を使う(タスクごとの最大値で割る)。"""
-    import plot_coordsum as pc  # 同じ analysis/ にある
+def _iqm(x):
+    """四分位平均(下位・上位 25% を除いた平均)。x は任意の形(平坦化して使う)。"""
+    x = np.sort(np.ravel(x))
+    n = len(x)
+    return float(x[int(np.floor(n * 0.25)):int(np.ceil(n * 0.75))].mean())
 
-    paper = pc.load(C.PAPER_CSV)
-    params = pc.norm_params(paper, "maxmean")
-    s = C.SETS[set_name]
-    n = min(C.n_seeds({k: v for k, v in ours.items() if k[0] == m}) for m in FIG_SYSTEMS if any(k[0] == m for k in ours))
-    ctds_note = "・CTDS=旧版ベース" if any(k[0] == "ctds" for k in ours) else ""
-    titles = {"paper": "論文(10 seed)", "ours": f"自分(n={n} seed): MAGPO={C.COND[s['magpo']]['short']}{ctds_note}"}
+
+def _minmax(paper):
+    """タスクごとの (min, max)。論文の全手法・全 seed・全ステップの return から取る(論文の正規化と同じ)。"""
+    out = {}
+    for t in C.TASKS:
+        v = np.concatenate([paper[k][1] for k in paper if k[1] == t and k[0] in FIG_SYSTEMS])
+        out[t] = (v.min(), v.max())
+    return out
+
+
+def _iqm_curves(data, mm, n_boot=300, seed=0):
+    """手法ごとの min-max 正規化 IQM 曲線と 95% 層化ブートストラップ区間(タスク内で seed を復元抽出)。
+    -> {system: (steps, iqm[T], lo[T], hi[T], n_seeds)}"""
+    rng = np.random.default_rng(seed)
+    out = {}
+    for s in FIG_SYSTEMS:
+        mats, steps = [], None
+        for t in C.TASKS:
+            ks = sorted(k for k in data if k[0] == s and k[1] == t)
+            if not ks:
+                mats = None
+                break
+            T = min(len(data[k][1]) for k in ks)
+            lo, hi = mm[t]
+            mats.append(np.array([(data[k][1][:T] - lo) / (hi - lo) for k in ks]))
+            steps = data[ks[0]][0][:T]
+        if mats is None:
+            continue
+        T = min(m.shape[1] for m in mats)
+        mats = [m[:, :T] for m in mats]
+        curve = np.array([_iqm(np.concatenate([m[:, i] for m in mats])) for i in range(T)])
+        boots = np.empty((n_boot, T))
+        for b in range(n_boot):
+            res = [m[rng.integers(0, m.shape[0], m.shape[0])] for m in mats]
+            boots[b] = [_iqm(np.concatenate([r[:, i] for r in res])) for i in range(T)]
+        out[s] = (steps[:T], curve, np.percentile(boots, 2.5, axis=0), np.percentile(boots, 97.5, axis=0), min(m.shape[0] for m in mats))
+    return out
+
+
+LS = {"magpo": "-", "ctds": "-", "mappo": "--", "happo": "-.", "mat": ":", "sable": "-."}
+
+
+def _norm_data(paper, ours, set_name):
+    mm = _minmax(paper)
+    return _iqm_curves(paper, mm), _iqm_curves(ours, mm)
+
+
+def fig_normalized(ours, set_name, out):
+    """論文 Figure 2(a) 形式: タスクごとの min-max 正規化(min/max は論文のデータ)+ 全タスクの IQM + 95% 層化ブートストラップ区間。
+    左=論文(10 seed)、右=自分。"""
+    paper = C.load_paper()
+    pc_, oc_ = _norm_data(paper, ours, set_name)
+    n = min(v[4] for v in oc_.values())
+    s_ = C.SETS[set_name]
+    ctds_note = "・CTDS=旧版ベース" if "ctds" in oc_ else ""
+    titles = {"paper": "論文(10 seed)", "ours": f"自分(n={n} seed): MAGPO={C.COND[s_['magpo']]['short']}{ctds_note}"}
     fig, axes = plt.subplots(1, 2, figsize=(12.5, 4.6), sharey=True, facecolor=C.SURF)
-    for ax, (name, data) in zip(axes, (("paper", paper), ("ours", ours))):
-        pc.style(ax, titles[name])
-        pc.draw(ax, pc.curves(data, params))
-    axes[0].set_ylabel("Mean episode return (normalized: 各タスクの最大値で割る)", color=C.INK2, fontsize=9)
+    for ax, (name, cur) in zip(axes, (("paper", pc_), ("ours", oc_))):
+        C.style_ax(ax, 9)
+        for s in FIG_SYSTEMS:
+            if s not in cur:
+                continue
+            st, m, lo, hi, _ = cur[s]
+            ax.fill_between(st / 1e7, lo, hi, color=C.COLOR[s], alpha=0.15, lw=0)
+            ax.plot(st / 1e7, m, color=C.COLOR[s], ls=LS[s], lw=1.8, label=C.LABEL[s])
+        ax.set_title(titles[name], loc="left", fontsize=10, fontweight="bold", color=C.INK)
+        ax.set_xlabel("timesteps (1e7)", fontsize=9, color=C.INK2)
+        ax.set_ylim(0, 1.0)
+    axes[0].set_ylabel("Mean episode return\n(min-max 正規化 IQM。min/max は論文のデータ)", color=C.INK2, fontsize=9)
     h, lb = axes[0].get_legend_handles_labels()
     fig.legend(h, lb, loc="upper center", ncol=len(h), frameon=False, fontsize=9, labelcolor=C.INK)
     fig.tight_layout(rect=(0, 0, 1, 0.92))
+    fig.savefig(out, dpi=150, facecolor=C.SURF)
+    print("saved", out)
+    print("終点(2e7)の正規化 IQM  手法: 論文 / 自分 / 差")
+    for s in FIG_SYSTEMS:
+        if s in oc_:
+            print(f"  {C.LABEL[s]:6s} {pc_[s][1][-1]:.2f} / {oc_[s][1][-1]:.2f} / {oc_[s][1][-1] - pc_[s][1][-1]:+.2f}")
+
+
+def fig_normalized_by_method(ours, set_name, out):
+    """04 と同じ正規化 IQM を、手法ごとの小さな図に分け、各図で論文(灰の破線+帯)と自分(色の実線+帯)を重ねる。"""
+    paper = C.load_paper()
+    pc_, oc_ = _norm_data(paper, ours, set_name)
+    fig, axes = plt.subplots(1, len(FIG_SYSTEMS), figsize=(3.3 * len(FIG_SYSTEMS), 3.3), sharey=True, facecolor=C.SURF)
+    for ax, s in zip(axes, FIG_SYSTEMS):
+        C.style_ax(ax, 8)
+        st, m, lo, hi, _ = pc_[s]
+        ax.fill_between(st / 1e7, lo, hi, color="#888888", alpha=0.25, lw=0)
+        ax.plot(st / 1e7, m, color="#555555", ls="--", lw=1.4)
+        if s in oc_:
+            st, m, lo, hi, n = oc_[s]
+            ax.fill_between(st / 1e7, lo, hi, color=C.COLOR[s], alpha=0.25, lw=0)
+            ax.plot(st / 1e7, m, color=C.COLOR[s], lw=1.9)
+        ax.set_title(C.LABEL[s], loc="left", fontsize=10, fontweight="bold", color=C.INK)
+        ax.set_xlabel("timesteps (1e7)", fontsize=8, color=C.INK2)
+        ax.set_ylim(0, 1.0)
+    axes[0].set_ylabel("正規化 IQM(min-max)", fontsize=9, color=C.INK2)
+    n = min(v[4] for v in oc_.values())
+    h = [Line2D([0], [0], color="#555555", ls="--", lw=1.4), Line2D([0], [0], color=C.INK2, lw=1.9)]
+    fig.legend(h, ["論文(10 seed、帯=95%区間)", f"自分(n={n} seed、色=手法)"], loc="upper center", ncol=2, frameon=False, fontsize=9, labelcolor=C.INK)
+    fig.tight_layout(rect=(0, 0, 1, 0.9))
     fig.savefig(out, dpi=150, facecolor=C.SURF)
     print("saved", out)
 
@@ -281,12 +372,12 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--set", default="codedefault", choices=list(C.SETS))
     ap.add_argument("--outdir", default="figures")
-    ap.add_argument("--only", default="1,2,3,4,5,6", help="作る図の番号(カンマ区切り)")
+    ap.add_argument("--only", default="1,2,3,4,5,6,7", help="作る図の番号(カンマ区切り)")
     a = ap.parse_args()
     os.makedirs(a.outdir, exist_ok=True)
     want = set(a.only.split(","))
     paper = C.load_paper()
-    ours = C.load_set(a.set) if "4" in want else None
+    ours = C.load_set(a.set) if ("4" in want or "7" in want) else None
     if ours is not None and a.set == "codedefault":  # CTDS はコード既定値の実行のみ
         ours.update(load_cond(CTDS_KEY))
     if "1" in want:
@@ -301,6 +392,8 @@ def main():
         fig_repro_final(paper, os.path.join(a.outdir, "06_repro_final.png"))
     if "4" in want:
         fig_normalized(ours, a.set, os.path.join(a.outdir, "04_normalized_overview.png"))
+    if "7" in want:
+        fig_normalized_by_method(ours, a.set, os.path.join(a.outdir, "07_normalized_by_method.png"))
 
 
 if __name__ == "__main__":
