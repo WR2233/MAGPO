@@ -24,7 +24,11 @@ CONDS = [
     ("v2_paperdefault", "current", 0.9, 0.1, ["magpo", "mappo", "happo", "sable", "mat"]),
     ("old_codedefault", "old", 0.95, 0.5, ["magpo"]),
     ("old_paperdefault", "old", 0.9, 0.1, ["magpo"]),
+    # CTDS(旧版コードベース)。ハイパラは magpo の行を流用し、alpha=0 / delta なし
+    ("ctds_codedefault", "old", 0.95, 0.5, ["ctds"]),   # guider に KL なし(正しい CTDS)
+    ("ctds_klall", "old", 0.95, 0.5, ["ctds"]),         # 前版: guider に KL を常にかける
 ]
+CSV_OF = {"ctds_codedefault": "ours_ctds2_codedefault.csv", "ctds_klall": "ours_ctds_codedefault.csv"}
 
 rows = [r for r in csv.DictReader(open(SRC)) if r["env_name"] == "coordsum"]
 with open(SRC) as f:
@@ -34,14 +38,16 @@ with open(OUT, "w", newline="") as f:
     w = csv.DictWriter(f, fieldnames=cols + extra)
     w.writeheader()
     for cond, code, gae, vf, systems in CONDS:
-        runs = C.load_condition(cond)  # 完了した run だけ
+        runs = C.load_runs(os.path.join(C.DATA, CSV_OF[cond])) if cond in CSV_OF else C.load_condition(cond)  # 完了した run だけ
         for s in systems:
             for t, tc in zip(C.TASKS, TASKS):
-                r = next(x for x in rows if x["system_name"] == s and x["task"] == tc)
+                r = next(x for x in rows if x["system_name"] == ("magpo" if s == "ctds" else s) and x["task"] == tc)
                 for seed in sorted(k[2] for k in runs if k[0] == s and k[1] == t):
                     o = dict(r)
-                    o.update(condition=cond, code=code, gae_lambda=gae, vf_coef=vf, params_system=s, seed=seed)
+                    o.update(condition=cond, code=code, gae_lambda=gae, vf_coef=vf, params_system="magpo" if s == "ctds" else s, seed=seed)
                     if code == "old":
                         o["system_name"] = "magpoold"
+                    if s == "ctds":  # CTDS は旧版コードベースだが、手法名は ctds(alpha=0、delta は使わない)
+                        o.update(system_name="ctds", alpha=0, delta="")
                     w.writerow(o)
 print("wrote", OUT)

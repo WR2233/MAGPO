@@ -163,6 +163,100 @@ def fig_curves(paper, out):
     fig.savefig(out, dpi=140, facecolor=C.SURF)
     print("saved", out)
 
+REPRO = {s: ("old_codedefault" if s == "magpo" else "v1_codedefault") for s in C.SYSTEMS}  # 旧コード+コード既定値
+
+
+def fig_repro_curves(paper, out):
+    """05: 採用条件(MAGPO=旧版コード、全手法=コード既定値)の学習曲線を論文と比べる。"""
+    data = {k: C.load_condition(k) for k in set(REPRO.values())}
+    fig, axes = plt.subplots(len(C.TASKS), len(C.SYSTEMS), figsize=(3.4 * len(C.SYSTEMS), 2.6 * len(C.TASKS)), sharex=True, facecolor=C.SURF)
+    for i, t in enumerate(C.TASKS):
+        ymax = max(paper_runs(paper, s, t)[1].max() for s in C.SYSTEMS) * 1.05
+        for j, s in enumerate(C.SYSTEMS):
+            ax = axes[i][j]; C.style_ax(ax)
+            st, arr = paper_runs(paper, s, t)
+            m, sd = arr.mean(0), arr.std(0, ddof=1)
+            ax.fill_between(st / 1e7, m - sd, m + sd, color="#888888", alpha=0.2, lw=0)
+            ax.plot(st / 1e7, m, color="#555555", ls="--", lw=1.3)
+            sk = C.stack(data[REPRO[s]], s, t)
+            if sk:
+                C.band(ax, sk[0], sk[1], C.COLOR[s], lw=1.9, alpha=1.0)
+            ax.set_ylim(0, ymax)
+            if i == 0:
+                ax.set_title(C.LABEL[s], loc="left", fontsize=10, fontweight="bold", color=C.INK)
+            if j == 0:
+                ax.set_ylabel(f"{t}\nreturn", fontsize=8, color=C.INK2)
+            if i == len(C.TASKS) - 1:
+                ax.set_xlabel("timesteps (1e7)", fontsize=8, color=C.INK2)
+    h = [Line2D([0], [0], color="#555555", ls="--", lw=1.3), Line2D([0], [0], color=C.INK2, lw=1.9)]
+    fig.legend(h, ["論文: 10 seed 平均(帯 = ±std)", "自分: 平均 ± std(色=手法)"], loc="upper center", ncol=2, frameon=False, fontsize=9, labelcolor=C.INK)
+    fig.text(0.5, 0.945, "MAGPO=旧版コード(隠れ状態を更新しない版)、全手法=コード既定値(GAE 0.95 / vf 0.5)", ha="center", fontsize=8, color=C.INK2)
+    fig.tight_layout(rect=(0, 0, 1, 0.94))
+    fig.savefig(out, dpi=140, facecolor=C.SURF)
+    print("saved", out)
+
+
+def fig_repro_final(paper, out):
+    """06: 同条件の最終スコア(棒=自分の seed 平均、点=各 seed、灰=論文平均±std)。"""
+    data = {k: C.load_condition(k) for k in set(REPRO.values())}
+    fig, axes = plt.subplots(1, 4, figsize=(17, 4.8), facecolor=C.SURF)
+    w = 0.38
+    for ax, t in zip(axes, C.TASKS):
+        C.style_ax(ax)
+        for i, s in enumerate(C.SYSTEMS):
+            m, sd = C.paper_stats(paper, s, t, "final")
+            ax.bar(i - w / 2, m, w * 0.92, yerr=sd, color="#a8a8a8", ecolor=C.INK2, error_kw=dict(lw=1, capsize=2))
+            v = C.seed_metrics(data[REPRO[s]], s, t, "final")
+            if v is None:
+                continue
+            ax.bar(i + w / 2, v.mean(), w * 0.92, color=C.COLOR[s], yerr=v.std(ddof=1) if len(v) > 1 else None,
+                   ecolor=C.INK2, error_kw=dict(lw=1, capsize=2))
+            ax.scatter([i + w / 2] * len(v), v, s=10, color=C.INK, zorder=3)
+            ref = np.array([C.metric(y, "final") for k, (_, y) in paper.items() if k[0] == s and k[1] == t])
+            ax.text(i, 168, f"{v.mean():.0f} (n={len(v)})\nz={C.z_score(v, ref):+.1f}", ha="center", fontsize=7.5, color=C.INK2)
+        ax.set_xticks(range(len(C.SYSTEMS))); ax.set_xticklabels([C.LABEL[s] for s in C.SYSTEMS], fontsize=8, color=C.INK2)
+        ax.set_title(f"CoordSum-{t}", loc="left", fontsize=10, fontweight="bold", color=C.INK)
+        ax.set_ylim(0, 185)
+    axes[0].set_ylabel(f"最終スコア(最後の{C.LAST}評価点の平均)", fontsize=9, color=C.INK2)
+    h = [Patch(color="#a8a8a8"), Patch(color=C.INK2)]
+    fig.legend(h, ["論文(10 seed 平均±std)", f"自分(MAGPO=旧版コード、コード既定値。点=各 seed。上段: 平均 (n=seed 数) と論文との z(Welch 型))"],
+               loc="upper center", ncol=2, frameon=False, fontsize=9, labelcolor=C.INK)
+    fig.tight_layout(rect=(0, 0, 1, 0.92))
+    fig.savefig(out, dpi=140, facecolor=C.SURF)
+    print("saved", out)
+
+def fig_ctds(paper, out):
+    """07: CTDS と MAGPO(旧版コード・コード既定値)の学習曲線を論文と比べる。"""
+    ctds = C.load_runs(os.path.join(C.DATA, "ours_ctds2_codedefault.csv"))  # guider に KL なし(正しい CTDS)
+    ctds_kl = C.load_runs(os.path.join(C.DATA, "ours_ctds_codedefault.csv"))  # 前版: guider に KL を常にかける
+    magpo = C.load_condition("old_codedefault")
+    fig, axes = plt.subplots(1, 4, figsize=(17, 3.9), facecolor=C.SURF)
+    for ax, t in zip(axes, C.TASKS):
+        C.style_ax(ax)
+        for s, data in (("magpo", magpo), ("ctds", ctds)):
+            st, arr = paper_runs(paper, s, t)
+            m, sd = arr.mean(0), arr.std(0, ddof=1)
+            ax.fill_between(st / 1e7, m - sd, m + sd, color=C.COLOR[s], alpha=0.15, lw=0)
+            ax.plot(st / 1e7, m, color=C.COLOR[s], ls="--", lw=1.3)
+            sk = C.stack(data, s, t)
+            if sk:
+                C.band(ax, sk[0], sk[1], C.COLOR[s], lw=1.9, alpha=1.0)
+        sk = C.stack(ctds_kl, "ctds", t)
+        if sk:
+            C.band(ax, sk[0], sk[1], C.INK2, lw=1.0, alpha=0.5)
+        ax.set_title(f"CoordSum-{t}", loc="left", fontsize=10, fontweight="bold", color=C.INK)
+        ax.set_xlabel("timesteps (1e7)", fontsize=8, color=C.INK2)
+        ax.set_ylim(0, 170)
+    axes[0].set_ylabel("return", fontsize=9, color=C.INK2)
+    n_m, n_c = C.n_seeds(magpo), C.n_seeds(ctds)
+    h = [Line2D([0], [0], color=C.COLOR["magpo"], ls="--", lw=1.3), Line2D([0], [0], color=C.COLOR["magpo"], lw=1.9),
+         Line2D([0], [0], color=C.COLOR["ctds"], ls="--", lw=1.3), Line2D([0], [0], color=C.COLOR["ctds"], lw=1.9), Line2D([0], [0], color=C.INK2, lw=1.0, alpha=0.5)]
+    fig.legend(h, ["MAGPO 論文(10 seed)", f"MAGPO 自分(旧版コード n={n_m})", "CTDS 論文(10 seed)", f"CTDS 自分(guider に KL なし n={n_c})", "参考: 前版 CTDS(guider に KL を常にかける n=1)"],
+               loc="upper center", ncol=5, frameon=False, fontsize=9, labelcolor=C.INK)
+    fig.tight_layout(rect=(0, 0, 1, 0.92))
+    fig.savefig(out, dpi=140, facecolor=C.SURF)
+    print("saved", out)
+
 
 def fig_normalized(ours, set_name, out):
     """論文 Figure (a) 形式。正規化は plot_coordsum.py と同じ関数を使う(タスクごとの最大値で割る)。"""
@@ -189,7 +283,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--set", default="codedefault", choices=list(C.SETS))
     ap.add_argument("--outdir", default="figures")
-    ap.add_argument("--only", default="1,2,3,4", help="作る図の番号(カンマ区切り)")
+    ap.add_argument("--only", default="1,2,3,4,5,6,7", help="作る図の番号(カンマ区切り)")
     a = ap.parse_args()
     os.makedirs(a.outdir, exist_ok=True)
     want = set(a.only.split(","))
@@ -201,6 +295,12 @@ def main():
         fig_final_all(paper, os.path.join(a.outdir, "02_final_vs_paper.png"))
     if "3" in want:
         fig_curves(paper, os.path.join(a.outdir, "03_curves_by_task.png"))
+    if "5" in want:
+        fig_repro_curves(paper, os.path.join(a.outdir, "05_repro_curves.png"))
+    if "6" in want:
+        fig_repro_final(paper, os.path.join(a.outdir, "06_repro_final.png"))
+    if "7" in want:
+        fig_ctds(paper, os.path.join(a.outdir, "07_ctds.png"))
     if "4" in want:
         fig_normalized(ours, a.set, os.path.join(a.outdir, "04_normalized_overview.png"))
 

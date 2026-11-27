@@ -1,12 +1,16 @@
 """実行ログ(起動時に出力される実際の config)から、各 run が実際に使ったハイパラを読み取り、
 analysis/data/ours_params.csv(予定値)と突き合わせる。
-使い方: python3 analysis/verify_params_from_logs.py <logs_root> [--out analysis/data/ours_params_actual.csv]
-  logs_root の下に ディレクトリ名=MAGPO / MAGPO_paperdef / MAGPO_old / MAGPO_oldpd(各 logs の中身)を置く
+使い方: python3 analysis/verify_params_from_logs.py <logs_root> [--out analysis/data/ours_params_actual.csv] [--partial]
+  --partial : 実行中(評価 122 回に満たない)のログも対象にする(設定の確認用)
+  logs_root の下に ディレクトリ名=MAGPO / MAGPO_paperdef / MAGPO_old / MAGPO_oldpd / CTDS(各 logs の中身)を置く
+  ログ先頭の「== code: commit=...」行があれば、commit 番号も出力 CSV に載せる(code_commit / code_dirty)
 """
 import ast, csv, glob, os, re, sys
 
 COND = {"MAGPO": "v1_codedefault", "MAGPO_paperdef": "v2_paperdefault",
-        "MAGPO_old": "old_codedefault", "MAGPO_oldpd": "old_paperdefault"}
+        "MAGPO_old": "old_codedefault", "MAGPO_oldpd": "old_paperdefault",
+        "CTDS": "ctds_codedefault"}
+JOB_COND = {"10422803": "ctds_klall"}  # CTDS 前版(guider に KL を常にかける)のジョブ。他の CTDS ジョブは ctds_codedefault
 ANSI = re.compile(r"\x1b\[[0-9;]*m")
 TASK_CSV = {"3x10-30": "3x10", "3x30-50": "3x30", "5x20-80": "5x20", "8x15-100": "8x15"}
 
@@ -41,14 +45,15 @@ def parse_config(text):
 
 def main():
     root = sys.argv[1]
+    partial = "--partial" in sys.argv
     out = sys.argv[sys.argv.index("--out") + 1] if "--out" in sys.argv else "analysis/data/ours_params_actual.csv"
     exp = list(csv.DictReader(open("analysis/data/ours_params.csv")))
     rows, issues = [], []
-    for d, cond in COND.items():
+    for d, cond0 in COND.items():
         for f in sorted(glob.glob(f"{root}/logs_{d}/coordsum_*_s*_*.out")):
             text = ANSI.sub("", open(f, errors="ignore").read())
             n_eval = text.count("MISC - Timestep")
-            if n_eval < 122:
+            if n_eval < 122 and not partial:
                 continue  # 未完了/テスト/失敗は対象外
             m = re.match(r".*coordsum_(\w+?)_(\d+x\d+-\d+)_s(\d+)_(\d+)\.out", f)
             system, task, seed, job = m.group(1), m.group(2), int(m.group(3)), m.group(4)
@@ -56,8 +61,12 @@ def main():
             if not cfg:
                 issues.append(f"[config読取失敗] {f}")
                 continue
-            cfg.update(_cond=cond, _system=system, _task=task, _seed=seed, _job=job, _log=os.path.basename(f))
+            cond = JOB_COND.get(job, cond0) if d == "CTDS" else cond0
+            mc = re.search(r"== code: commit=(\w+)(?: branch=(\S+))?(?: dirty=(\w+))?", text)
+            cfg.update(_commit=mc.group(1) if mc else "", _dirty=(mc.group(3) or "") if mc else "", _cond=cond, _system=system, _task=task, _seed=seed, _job=job, _log=os.path.basename(f))
             rows.append(cfg)
+            if cfg.get("system.seed") != seed:
+                issues.append(f"[不一致] {cond} {system} {task} job{job}: seed ファイル名={seed} 実際={cfg.get('system.seed')}")
             e = next((r for r in exp if r["condition"] == cond and r["system_name"] == system and r["task"] == TASK_CSV[task]), None)
             if e is None:
                 issues.append(f"[予定行なし] {cond} {system} {task}")
@@ -89,10 +98,10 @@ def main():
     keys = sorted({k for r in rows for k in r if not k.startswith("_")})
     keep = [k for k in keys if k.startswith(("system.", "arch.num", "network.net_config", "network.embed_dim", "network.n_", "network.memory_config.decay", "env.scenario", "env.name", "env.task"))]
     with open(out, "w", newline="") as fh:
-        w = csv.DictWriter(fh, fieldnames=["condition", "system", "task", "seed", "job", "log"] + keep, extrasaction="ignore")
+        w = csv.DictWriter(fh, fieldnames=["condition", "system", "task", "seed", "job", "log", "code_commit", "code_dirty"] + keep, extrasaction="ignore")
         w.writeheader()
         for r in rows:
-            w.writerow({"condition": r["_cond"], "system": r["_system"], "task": r["_task"], "seed": r["_seed"], "job": r["_job"], "log": r["_log"], **{k: r.get(k) for k in keep}})
+            w.writerow({"condition": r["_cond"], "system": r["_system"], "task": r["_task"], "seed": r["_seed"], "job": r["_job"], "log": r["_log"], "code_commit": r["_commit"], "code_dirty": r["_dirty"], **{k: r.get(k) for k in keep}})
     print(f"読取 {len(rows)} run → {out}")
     from collections import Counter
     print(Counter((r["_cond"], r["_system"]) for r in rows))
