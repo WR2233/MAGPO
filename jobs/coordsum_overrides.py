@@ -1,7 +1,7 @@
 """experiment_data/params.csv から、CoordSum 用の Hydra override と実行ファイルを出力する。
 
 使い方:  python jobs/coordsum_overrides.py SYSTEM TASK
-  SYSTEM: magpo | mappo | happo | sable | mat
+  SYSTEM: magpo | magpoold | ctds | mappo | happo | sable | mat
   TASK  : 3x10-30 | 3x30-50 | 5x20-80 | 8x15-100
 出力:   1行目に実行する python ファイル、2行目以降に1行1個の override。
 標準ライブラリのみ使用(計算ノードの .venv でも動く)。
@@ -18,11 +18,16 @@ import sys
 
 SCRIPTS = {
     "magpo": "mava/systems/gpo/anakin/rec_magpo.py",
+    # 旧版: learner の RNN 隠れ状態を更新しない(d2ac38b "fix bugs" の直前の版)
+    "magpoold": "mava/systems/gpo/anakin/rec_magpo_prefix.py",
+    # CTDS: rec_magpo_prefix.py から二重clip・KLマスクを外したコピー。alpha=0 で学習側のRL補助損失も外す
+    "ctds": "mava/systems/gpo/anakin/rec_ctds.py",
     "mappo": "mava/systems/ppo/anakin/rec_mappo.py",
     "happo": "mava/systems/ppo/anakin/rec_happo.py",
     "sable": "mava/systems/sable/anakin/rec_sable.py",
     "mat": "mava/systems/mat/anakin/mat.py",
 }
+CSV_NAME = {"magpoold": "magpo", "ctds": "magpo"}  # params.csv 上の手法名
 TASK_TO_CSV = {"3x10-30": "3x10", "3x30-50": "3x30", "5x20-80": "5x20", "8x15-100": "8x15"}
 CSV_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "experiment_data", "params.csv")
 
@@ -30,7 +35,7 @@ CSV_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "exper
 def load_row(system, task):
     rows = [
         r for r in csv.DictReader(open(CSV_PATH))
-        if r["system_name"] == system and r["env_name"] == "coordsum" and r["task"] == TASK_TO_CSV[task]
+        if r["system_name"] == CSV_NAME.get(system, system) and r["env_name"] == "coordsum" and r["task"] == TASK_TO_CSV[task]
     ]
     if len(rows) != 1:
         sys.exit(f"params.csv: {system}/{task} に一致する行が {len(rows)} 件")
@@ -60,10 +65,12 @@ def build(system, task):
         if lr:
             out.append(f"system.actor_lr={lr}")
 
-    if system == "magpo":
+    if system in ("magpo", "magpoold"):
         add("system.alpha", "alpha")
         add("system.clip_gpo", "delta")
-    if system in ("magpo", "sable"):
+    if system == "ctds":
+        out.append("system.alpha=0")  # clip_gpo は CTDS では使わない
+    if system in ("magpo", "magpoold", "ctds", "sable"):
         add("network.net_config.embed_dim", "n_embd")
         add("network.net_config.n_block", "n_block")
         add("network.net_config.n_head", "n_head")
