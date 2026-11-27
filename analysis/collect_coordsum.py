@@ -8,8 +8,8 @@
   # 論文の生データ(experiment_data.json)から CoordSum だけ抜き出す
   python analysis/collect_coordsum.py paper experiment_data/experiment_data.json analysis/data/paper_coordsum.csv
 
-  # 自分の実行結果(results/coordsum_<system>_<task>_s<seed>/json/**/metrics.json)を集める
-  python analysis/collect_coordsum.py ours results analysis/data/ours_v1_codedefault.csv
+  # 自分の実行結果(runs/results/coordsum_<system>_<task>_s<seed>/json/**/metrics.json)を集める
+  python analysis/collect_coordsum.py ours runs/results analysis/data/ours_v1_codedefault.csv
 
 標準ライブラリのみ使用。
 """

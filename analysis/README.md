@@ -22,13 +22,16 @@ seed 数は条件ごとに異なる(`ours_params.csv` の seed 列と、図の�
 
 ## 結果の更新手順(Wisteria で seed を追加したとき)
 ```bash
-# 1. 結果とログを取得(ブランチごとのディレクトリ。MAGPO=main の 4 手法、MAGPO_old=旧版 MAGPO)
-rsync -a wisteria:/work/gg45/g45018/MAGPO/results/      results/
-rsync -a wisteria:/work/gg45/g45018/MAGPO_old/results_old/ results_old/
+# 1. 結果を取得(手元では runs/ の下にまとめる。MAGPO=main の 4 手法、MAGPO_old=旧版 MAGPO、MAGPO_ctds=CTDS)
+mkdir -p runs
+rsync -a wisteria:/work/gg45/g45018/MAGPO/results/            runs/results/
+rsync -a wisteria:/work/gg45/g45018/MAGPO_old/results_old/    runs/results_old/
+rsync -a wisteria:/work/gg45/g45018/MAGPO_ctds/results_ctds2/ runs/results_ctds2/
 # 2. CSV に集める(新しい seed も自動で入る。MAGPO(旧版)は system 名 magpoold)
 R="uv run --no-project --with numpy --with matplotlib python"
-$R analysis/collect_coordsum.py ours results     analysis/data/ours_v1_codedefault.csv
-$R analysis/collect_coordsum.py ours results_old analysis/data/ours_old_codedefault.csv
+$R analysis/collect_coordsum.py ours runs/results      analysis/data/ours_v1_codedefault.csv
+$R analysis/collect_coordsum.py ours runs/results_old  analysis/data/ours_old_codedefault.csv
+$R analysis/collect_coordsum.py ours runs/results_ctds2 analysis/data/ours_ctds2_codedefault.csv
 # 3. 図と表
 $R analysis/make_figures.py
 $R analysis/compare_conditions.py
