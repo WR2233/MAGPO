@@ -38,7 +38,23 @@ if [ ! -x "${PY}" ]; then
 fi
 export XLA_PYTHON_CLIENT_PREALLOCATE=false
 
+# 実行したコードのバージョン(commit)を記録する。git が無い場所(rsync で送った作業ディレクトリ)では
+# 送信前にローカルで作った .code_version(jobs/write_code_version.sh)を使う。
+code_version() {
+  if git rev-parse --git-dir >/dev/null 2>&1; then
+    local dirty="no"
+    [ -n "$(git status --porcelain --untracked-files=no 2>/dev/null)" ] && dirty="yes"
+    echo "commit=$(git rev-parse HEAD) branch=$(git rev-parse --abbrev-ref HEAD) dirty=${dirty}"
+  elif [ -f .code_version ]; then
+    cat .code_version
+  else
+    echo "commit=unknown"
+  fi
+}
+CODE_VERSION="$(code_version)"
+
 echo "== host: $(hostname) system: ${SYSTEM} tasks: ${TASKS} seeds: ${SEEDS} mode: ${MODE} maxpar: ${MAXPAR}"
+echo "== code: ${CODE_VERSION}"
 "${PY}" -c "import jax; print('jax devices:', jax.devices())"
 
 run_one() {
@@ -61,6 +77,16 @@ run_one() {
   export TMPDIR="${tmpd}"
   local log="logs/coordsum_${SYSTEM}_${task}_s${seed}_${PJM_JOBID:-local}.out"
   : > "${log}"
+  echo "== code: ${CODE_VERSION} script: ${script} system: ${SYSTEM} job: ${PJM_JOBID:-local}" >> "${log}"
+  # 結果ディレクトリにも、どのコードで実行したかを残す
+  local rdir="${RESULTS_ROOT}/coordsum_${SYSTEM}_${task}_s${seed}"
+  mkdir -p "${rdir}"
+  {
+    echo "${CODE_VERSION}"
+    echo "script=${script}"
+    echo "system=${SYSTEM} task=${task} seed=${seed} job=${PJM_JOBID:-local} date=$(date +%Y-%m-%dT%H:%M:%S)"
+    echo "overrides=${overrides[*]}"
+  } > "${rdir}/code_version.txt"
   local attempt
   for attempt in 1 2 3; do
     echo "== attempt ${attempt}" >> "${log}"
