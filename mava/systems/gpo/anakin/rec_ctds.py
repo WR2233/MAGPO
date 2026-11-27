@@ -1,4 +1,4 @@
-"""CTDS: MAGPO without double clipping, KL masking and the learner RL auxiliary loss.
+"""CTDS: MAGPO without double clipping, KL masking (guider has no KL term) and the learner RL auxiliary loss.
 
 Copy of rec_magpo_prefix.py (pre-fix MAGPO). Run with system.alpha=0 to drop the learner RL loss.
 """
@@ -248,10 +248,11 @@ def get_learner_fn(
                     actor_log_prob = actor_policy.log_prob(traj_batch.action)
 
                     ratio = jnp.exp(guider_log_prob - traj_batch.log_prob)
-                    # CTDS: no double clip (plain guider PPO ratio) and no KL masking.
+                    # CTDS: the guider learns freely (plain PPO) -- no double clip and no
+                    # KL term toward the learner. The learner only distills the guider.
                     # (MAGPO would use a double-clipped ratio and a masked KL here.)
                     clipped_ratio = ratio
-                    kl_loss = kl_loss.mean()
+                    kl_loss = jnp.zeros(())  # kept in the aux outputs for logging (always 0)
                     # Nomalise advantage at minibatch level
                     gae = (gae - gae.mean()) / (gae.std() + 1e-8)
                     guider_loss1 = ratio * gae
