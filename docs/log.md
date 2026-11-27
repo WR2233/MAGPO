@@ -2,6 +2,7 @@
 
 **Creation** OKF(v0.2)形式で `docs/` を新設。実験条件・結果のまとめ・CTDS の実装メモを記載。
 CTDS(guider の KL なし)を 4 seed で実行し、図 02〜06 に CTDS を追加。
+**Update** 再現数(20 条件中 15 が 1σ 以内、19 が 2σ 以内)を n=4 で再計算して確認。`ctds-implementation.md` のコード差分と設定を書き分け、`experiment-conditions.md` を draft に変更。
 
 ## 2026-11-25
 

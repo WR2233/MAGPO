@@ -4,7 +4,7 @@ title: 実験条件(コード版・ハイパーパラメータ)
 description: CoordSum 再現で使った手法ごとのコード版とハイパーパラメータの区分、実行の追跡方法。
 tags: [coordsum, reproduction, hyperparameters]
 generated: { by: ai:claude, at: 2026-11-27T11:09:07+09:00 }
-status: stable
+status: draft
 sources:
   - id: params-paper
     resource: https://github.com/WR2233/MAGPO/blob/main/experiment_data/params.csv
@@ -27,7 +27,7 @@ sources:
 | MAPPO / HAPPO / SABLE / MAT | 現行 | `mava/systems/{ppo,sable,mat}/anakin/` |
 
 旧版が採用なのは、現行より論文に近い結果になるため(8x15-100 の最終: 旧版 126、現行 93、論文 120)[^old]。
-原因(古い隠れ状態の引き継ぎ vs 文脈の欠落)は仮説のまま未検証。
+原因(古い隠れ状態の引き継ぎ vs 文脈の欠落)は仮説のまま未検証。現行コードは seed 1 のみで、この比較は 4 seed 対 1 seed(対照実験は未実施)。
 
 # ハイパーパラメータ
 

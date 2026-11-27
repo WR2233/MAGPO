@@ -24,11 +24,14 @@ CTDS の定義: guider は拘束されず自由に学習し、student(分散側)
 
 # 実装(最終版)
 
-`rec_magpo_prefix.py`(MAGPO 旧版)との差分は guider の損失の 2 点だけ[^code]:
+`rec_magpo_prefix.py`(MAGPO 旧版)とのコード上の差分は guider の損失の 2 点だけ[^code]:
 
 * 二重 clip を外す: `clipped_ratio = ratio`(普通の PPO の比率)。
 * guider の KL 項を外す: `kl_loss = 0`。
-* 学習側の RL 補助損失は `system.alpha=0`(設定のみ)。学習側の損失は `alpha*PPO + KL(guider‖learner)` のまま、KL だけが残る。
+
+設定(コードは変えない):
+
+* 学習側の RL 補助損失は `system.alpha=0` で外す。学習側の損失は `alpha*PPO + KL(guider‖learner)` のコードのまま、alpha=0 により KL だけが残る。
 
 ハイパーパラメータは MAGPO の行を流用(GAE λ/vf はコード既定値)。
 
